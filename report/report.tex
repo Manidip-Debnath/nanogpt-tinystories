@@ -27,7 +27,7 @@
 \vspace{10pt}
 \end{center}
 \begin{center}\begin{minipage}{0.93\textwidth}
-\small\noindent\textbf{\textit{Abstract}---}We implement a nanoGPT-style decoder-only transformer from scratch (0.82\,M parameters, 4 layers, width 128, one token per character) and pre-train it on 40\,M characters of TinyStories. The default configuration reaches a validation loss of 0.857 nats/char (perplexity 2.36, 1.24 bits/char), well below the 1.00 requirement. We then ask how far the loss can be pushed when every training run may use at most $2\times10^{14}$ FLOPs. A two-stage search (12\%-budget screening followed by six full-budget runs and fresh-seed replication) selects a context of 256 characters with batch size 8, which reaches \textbf{0.7016} nats/char (1.012 bits/char, perplexity 2.02) against 0.7513 for the baseline, and stays below 0.725 on all three seeds (mean $0.7060\pm0.0038$). Short-run screening ranked the winning context length last, so short-run rankings did not transfer to the full budget. Part of the gain from a longer context is an artefact of how the fixed-slice evaluation averages over windows, which we state explicitly. As a bonus, replacing learned position embeddings with rotary embeddings (RoPE) lowers the loss at 35\% of the budget in all three seeds (mean gap 0.0087, Welch $p\approx0.04$).
+\small\noindent\textbf{\textit{Abstract}---}We implement a nanoGPT-style decoder-only transformer from scratch (0.82\,M parameters, 4 layers, width 128, one token per character) and pre-train it on 40\,M characters of TinyStories. The default configuration reaches a validation loss of 0.8585 nats/char (perplexity 2.36, 1.24 bits/char), well below the 1.00 requirement. We then ask how far the loss can be pushed when every training run may use at most $2\times10^{14}$ FLOPs. A two-stage search (12\%-budget screening followed by six full-budget runs and fresh-seed replication) selects a context of 256 characters with batch size 8, which reaches \textbf{0.7016} nats/char (1.012 bits/char, perplexity 2.02) against 0.7478 for the baseline, and stays below 0.725 on all three seeds (mean $0.7060\pm0.0038$). Short-run screening ranked the winning context length last, so short-run rankings did not transfer to the full budget. Follow-up runs show that the whole gain from the longer context is explained by the way the evaluation averages over windows of the model's own length (scored with equal windows, the longer-context model is not better than the baseline); the 0.82\,M-parameter model is also close to the best size at this budget (0.48\,M, 1.2\,M and 1.8\,M parameters are all worse). As a bonus, replacing learned position embeddings with rotary embeddings (RoPE) lowers the loss at 35\% of the budget in all three seeds (mean gap 0.0079, Welch $p=0.031$), but at the full budget RoPE is worse ($0.7212$ against $0.7060$, $p=0.016$).
 \end{minipage}\end{center}
 \begin{center}\begin{minipage}{0.93\textwidth}\small\noindent\textbf{\textit{Index Terms}---}language model, transformer, GPT, TinyStories, character-level tokenization, compute-constrained training, rotary position embedding.\end{minipage}\end{center}
 \vspace{6pt}]
@@ -94,7 +94,7 @@ Model & Loss & Perplexity & bits/char & Compr.\\\midrule
 Uniform & 4.5643 & 96.00 & 6.585 & 1.2$\times$\\
 Unigram & 3.0806 & 21.77 & 4.444 & 1.8$\times$\\
 Bigram & 2.2800 & 9.78 & 3.289 & 2.4$\times$\\
-Default GPT (3,000 steps) & 0.8570 & 2.36 & 1.236 & 6.5$\times$\\
+Default GPT (3,000 steps) & 0.8585 & 2.36 & 1.239 & 6.5$\times$\\
 \textbf{Final GPT (full budget)} & \textbf{0.7016} & \textbf{2.02} & \textbf{1.012} & \textbf{7.9}$\times$\\\bottomrule\end{tabular}\end{table}
 
 \section{Experiments Under the Compute Budget}
@@ -104,82 +104,107 @@ Fig.~\ref{fig:flow} summarises the protocol. The rule for choosing the final mod
 \begin{figure*}[t]\centering\includegraphics[width=0.85\textwidth]{figures/fig_workflow.png}\caption{Experimental workflow of Part~7.}\label{fig:flow}\end{figure*}
 
 \subsection{Screening at 12\% of the budget}
-Four candidates were trained for 12\% of the budget (Table~\ref{tab:screen}, Fig.~\ref{fig:screen}). A candidate had to beat the baseline by a margin of 0.010 to be chosen in advance; none did (best: weight decay 0.01, $-0.0055$), so screening alone would have kept the baseline. The context-256 candidate ranked \emph{last} (+0.1716).
+Four candidates were trained for 12\% of the budget (Table~\ref{tab:screen}, Fig.~\ref{fig:screen}). A candidate had to beat the baseline by a margin of 0.010 to be chosen in advance; none did (best: weight decay 0.01, $-0.0070$), so screening alone would have kept the baseline. The context-256 candidate ranked \emph{last} (+0.1772).
 
 \begin{table}[t]\centering\caption{Screening runs (12\% budget, fixed-slice loss)}\label{tab:screen}
 \footnotesize\begin{tabular}{lcc}\toprule
 Candidate & Loss & vs.\ base\\\midrule
-wd 0.01 & 1.0961 & $-0.0055$\\
-base ($\eta=3\mathrm{e}{-3}$) & 1.1015 & 0\\
-$\eta=2\mathrm{e}{-3}$ & 1.1524 & $+0.0509$\\
-context 256 (batch 16) & 1.2731 & $+0.1716$\\\bottomrule\end{tabular}\end{table}
+wd 0.01 & 1.0979 & $-0.0070$\\
+base ($\eta=3\mathrm{e}{-3}$) & 1.1050 & 0\\
+$\eta=2\mathrm{e}{-3}$ & 1.1527 & $+0.0478$\\
+context 256 (batch 16) & 1.2821 & $+0.1772$\\\bottomrule\end{tabular}\end{table}
 
 \begin{figure}[t]\centering\includegraphics[width=0.92\columnwidth]{figures/cell079.png}\caption{Screening result. The red line is the baseline minus the 0.010 margin.}\label{fig:screen}\end{figure}
 
 \subsection{Full-budget runs}
-Because short runs can mislead, six settings were then trained with 99.5\% of the budget (about 2.4--2.9 minutes each on a T4). Table~\ref{tab:full} gives the result and Fig.~\ref{fig:curves} the learning curves.
+Because short runs can mislead, six settings were then trained with 99.5\% of the budget (about 2.3--2.9 minutes each on a T4). Table~\ref{tab:full} gives the result and Fig.~\ref{fig:curves} the learning curves.
 
 \begin{table}[t]\centering\caption{Full-budget runs (seed 1337, fixed-slice loss)}\label{tab:full}
 \footnotesize\begin{tabular}{lrrcr}\toprule
 Setting & Params & Steps & Loss & $\Delta$\\\midrule
-\textbf{T256, batch 8} & 838,400 & 14,715 & \textbf{0.7016} & $-0.0496$\\
-T256, batch 16, $\eta{=}4\mathrm{e}{-3}$ & 838,400 & 7,357 & 0.7060 & $-0.0452$\\
-T512, batch 8 & 871,168 & 5,802 & 0.7187 & $-0.0326$\\
-T384, batch 8 & 854,784 & 8,650 & 0.7211 & $-0.0301$\\
-T256, batch 16 & 838,400 & 7,357 & 0.7385 & $-0.0128$\\
-T128, batch 32 (baseline) & 822,016 & 8,495 & 0.7513 & 0\\\bottomrule\end{tabular}\end{table}
+\textbf{T256, batch 8} & 838,400 & 14,715 & \textbf{0.7016} & $-0.0462$\\
+T256, batch 16, $\eta{=}4\mathrm{e}{-3}$ & 838,400 & 7,357 & 0.7067 & $-0.0411$\\
+T384, batch 8 & 854,784 & 8,650 & 0.7211 & $-0.0267$\\
+T512, batch 8 & 871,168 & 5,802 & 0.7251 & $-0.0227$\\
+T256, batch 16 & 838,400 & 7,357 & 0.7343 & $-0.0135$\\
+T128, batch 32 (baseline) & 822,016 & 8,495 & 0.7478 & 0\\\bottomrule\end{tabular}\end{table}
 
 \begin{figure*}[t]\centering
 \includegraphics[width=0.32\textwidth]{figures/cell082.png}\hfill\includegraphics[width=0.32\textwidth]{figures/cell083.png}\hfill\includegraphics[width=0.32\textwidth]{figures/cell084.png}\\[3pt]
 \includegraphics[width=0.32\textwidth]{figures/cell085.png}\hfill\includegraphics[width=0.32\textwidth]{figures/cell086.png}\hfill\includegraphics[width=0.32\textwidth]{figures/cell087.png}
 \caption{Training and validation loss of the six full-budget runs (top: T128 bs32 baseline, T256 bs16, T256 bs8; bottom: T256 bs16 $\eta{=}4\mathrm{e}{-3}$, T384 bs8, T512 bs8).}\label{fig:curves}\end{figure*}
 
-Three observations follow. (1)~Moving from context 128 to 256 at equal tokens per step (batch 16) lowers the loss by 0.0128. (2)~Halving the batch to 8 doubles the number of updates and lowers it by a further 0.0369; a higher learning rate at batch 16 gives most of the same gain (0.7060). `T256 bs8' sees fewer characters than the baseline (30.1\,M against 34.8\,M) but performs 1.7 times as many updates, so at this budget the model is limited by the number of updates and not by the amount of text. (3)~Contexts longer than 256 did not pay off: the attention term makes tokens more expensive, so only 8,650 (T384) and 5,802 (T512) steps fit. Overall the run table and the compute plot are shown in Fig.~\ref{fig:compute}.
+Three observations follow. (1)~Moving from context 128 to 256 at equal tokens per step (batch 16) lowers the loss by 0.0135. (2)~Halving the batch to 8 doubles the number of updates and lowers it by a further 0.0327; a higher learning rate at batch 16 gives most of the same gain (0.7067). `T256 bs8' sees fewer characters than the baseline (30.1\,M against 34.8\,M) but performs 1.7 times as many updates. This is not a general rule: at context 128 a batch of 8 is \emph{worse} than 32 (Section~\ref{sec:follow}). (3)~Contexts longer than 256 did not pay off: the attention term makes tokens more expensive, so only 8,650 (T384) and 5,802 (T512) steps fit. Overall the run table and the compute plot are shown in Fig.~\ref{fig:compute}.
 
 \begin{figure*}[t]\centering\includegraphics[width=0.9\textwidth]{figures/cell099.png}\caption{Validation loss (from \texttt{estimate\_loss}) against training FLOPs for every run. Left: all runs; right: the nine full-budget runs ranked, best on top (green: seed 1337, purple: fresh seeds).}\label{fig:compute}\end{figure*}
 
 \subsection{Fresh seeds}
-Table~\ref{tab:seed} replicates the baseline and the winner with seeds 1 and 2. On the two fresh seeds the baseline averages 0.7560 and the winner 0.7082, a gain of 0.0477, more than 12 times the larger seed standard deviation (0.0038). All three seeds of the winner are below the 0.725 threshold (worst 0.7088, margin 0.016), so the tier does not depend on the seed. The winner was chosen among six settings on the same slice it is scored on, which favours it slightly; this is why the fresh seeds are reported.
+Table~\ref{tab:seed} replicates the baseline and the winner with seeds 1 and 2. On the two fresh seeds the baseline averages 0.7544 and the winner 0.7082, a gain of 0.0461, about 12 times the larger seed standard deviation (0.0039). All three seeds of the winner are below the 0.725 threshold (worst 0.7088, margin 0.016), so the tier does not depend on the seed. The winner was chosen among six settings on the same slice it is scored on, which favours it slightly; this is why the fresh seeds are reported.
 
 \begin{table}[t]\centering\caption{Seed replication (fixed-slice loss)}\label{tab:seed}
 \footnotesize\begin{tabular}{lccccc}\toprule
 Setting & 1337 & 1 & 2 & Mean & Std\\\midrule
-T128 bs32 & 0.7513 & 0.7564 & 0.7555 & 0.7544 & 0.0027\\
+T128 bs32 & 0.7478 & 0.7535 & 0.7553 & 0.7522 & 0.0039\\
 T256 bs8 & 0.7016 & 0.7077 & 0.7088 & 0.7060 & 0.0038\\\bottomrule\end{tabular}\end{table}
 
 \subsection{Loss by position and the scoring artefact}
-Fig.~\ref{fig:pos} plots the loss against the position inside the window. At position 0 the model has seen one character and its loss (about 2.3) is close to the bigram baseline (2.28); after about ten characters it is near 1.0, and it keeps falling slowly. The final model (context 256) lies below the default one at almost every position. Because the evaluation averages over whole windows of the model's own length, a longer window contains a smaller share of the expensive first characters, which lowers the \emph{measured} loss by itself. Part of the 128$\to$256 gain is therefore a property of the scoring and not of a better language model; we did not quantify how much. We also did not test the baseline context (128) with batch 8, so the gain cannot be split cleanly between context and smaller batch.
+Fig.~\ref{fig:pos} plots the loss against the position inside the window. At position 0 the model has seen one character and its loss (about 2.3) is close to the bigram baseline (2.28); after about ten characters it is near 1.0, and it keeps falling slowly. The final model (context 256) lies below the default one at almost every position. Because the evaluation averages over whole windows of the model's own length, a longer window contains a smaller share of the expensive first characters, which lowers the \emph{measured} loss by itself. Section~\ref{sec:follow} quantifies this.
 
 \begin{figure}[t]\centering\includegraphics[width=\columnwidth]{figures/cell108.png}\caption{Fixed-slice loss by position in the window for the default (T=128) and final (T=256) models.}\label{fig:pos}\end{figure}
 
+\subsection{Follow-up runs: scoring, model size, dropout}\label{sec:follow}
+Four questions were left open by the search and are answered with additional full-budget runs (seed 1337, 99.5\% of $C_{\max}$, \texttt{train()}, learning rate $3\times10^{-3}$ without re-tuning), in the same session as the rest of the notebook. The baseline and the winner are reused from the search. The baseline (seed 1337) is not exactly reproducible: it scored 0.7478 here and 0.7513 and 0.7552 in two earlier sessions, so one baseline value carries an uncertainty of about $\pm0.004$; the winner reproduced 0.7016 exactly every time.
+
+\emph{Scoring effect.} The same trained models were scored with windows of different lengths (Table~\ref{tab:win}). With equal 128-character windows the winner (0.7532) is \emph{not} better than the baseline (0.7478). The Part~8 difference of 0.0462 splits exactly into $-0.0516$ from the window length alone (112\% of the gain) and $+0.0054$ from the model, which is within the run-to-run variation of the baseline: the window length explains the whole gain. On windows of 32 and 64 characters the winner is worse, as expected for a model trained only on 256-character windows. The longer context does not make the model a better predictor at a given context length; it lowers the metric, which averages over whole windows. This is allowed by the specified evaluation, and an evaluation with overlapping windows would remove it (not run).
+
+\begin{table}[t]\centering\caption{Loss of the same models scored with different window lengths}\label{tab:win}
+\footnotesize\begin{tabular}{lcccc}\toprule
+Model (block size) & 32 & 64 & 128 & 256\\\midrule
+T128 bs32 baseline (128) & 0.9033 & 0.8077 & 0.7478 & --\\
+T256 bs8 winner (256) & 0.9274 & 0.8246 & 0.7532 & 0.7016\\\bottomrule\end{tabular}\end{table}
+
+\emph{Model size.} Table~\ref{tab:size} and Fig.~\ref{fig:size} change the size around the winner. The loss is U-shaped: a smaller model that sees more text (width 96, 102 characters per parameter) is worse by 0.0275, a deeper one (6 layers, 16.5) by 0.0113, and a wider one (width 192, 8) by 0.1126. At about 36 characters per parameter the winner is close to the best trade-off among the sizes tried, so neither a bigger model nor more tokens paid off. The learning rate was not re-tuned per size, so the width-192 result may partly be a learning-rate effect. \emph{Context against batch.} Context 128 with batch 8 (33,983 steps) gives 0.7700, worse than batch 32 (0.7478), so the smaller batch does not help by itself. \emph{Dropout.} Dropout 0.1 at the winning setting gives 0.7826, worse by 0.0810, consistent with the absence of overfitting.
+
+\begin{table}[t]\centering\caption{Same budget, different sizes (context 256, batch 8)}\label{tab:size}
+\footnotesize\begin{tabular}{lrrrc}\toprule
+Setting & Params & Tokens (M) & Tok./param & Loss\\\midrule
+width 96 & 481,344 & 48.9 & 102 & 0.7292\\
+\textbf{width 128 (winner)} & 838,400 & 30.1 & 36 & \textbf{0.7016}\\
+6 layers & 1,234,944 & 20.4 & 16.5 & 0.7129\\
+width 192 & 1,847,424 & 14.8 & 8 & 0.8142\\
+dropout 0.1 & 838,400 & 30.1 & 36 & 0.7826\\
+T128, batch 8 & 822,016 & 34.8 & 42 & 0.7700\\\bottomrule\end{tabular}\end{table}
+
+\begin{figure}[t]\centering\includegraphics[width=0.92\columnwidth]{figures/fig_size.png}\caption{Loss against model size at the same compute; the labels give the number of training characters.}\label{fig:size}\end{figure}
+
 \subsection{Samples and temperature}
-Generation divides the logits by a temperature $\tau$: $p_i=e^{z_i/\tau}/\sum_je^{z_j/\tau}$. At $\tau=0.5$ the distribution is sharpened: every word is real and the sentences are short and grammatical, but phrases repeat (``a big tree'', ``a big seek'', ``a big dream''). At $\tau=1.0$ names and sentence shapes are plausible but spelling and grammar errors appear (``boury'', ``weater''). At $\tau=1.5$ the distribution is flat and errors compound, producing non-words (``broes'', ``vehion'') and misplaced punctuation. A vocabulary check shows that 99.1\% of the 845 words generated by the final model at $\tau=0.8$ occur at least three times in the training text, against 98.5\% of 826 for the default model; this difference is not significant (one standard error of a rate near 99\% is 0.4--0.5 points), and the metric cannot measure coherence. As expected for a base model, it \emph{continues} text instead of answering: after ``The capital of France is'' it writes story fragments, because its only training objective is next-character prediction on stories.
+Generation divides the logits by a temperature $\tau$: $p_i=e^{z_i/\tau}/\sum_je^{z_j/\tau}$. At $\tau=0.5$ the distribution is sharpened: every word is real and the sentences are short and mostly grammatical, but words and phrases repeat (``very happy'', ``so happy'', ``a big street'', ``a big friend''). At $\tau=1.0$ names and sentence shapes are plausible but non-words and grammar errors appear (``airor'', ``Miama'', ``He also laughed and happy to read''). At $\tau=1.5$ the distribution is flat and errors compound, producing non-words (``broes'', ``olderful'', ``Ectefully'') and misplaced punctuation. A vocabulary check shows that 99.1\% of the 845 words generated by the final model at $\tau=0.8$ occur at least three times in the training text, against 98.7\% of 855 for the default model; this difference is not significant (one standard error of a rate near 99\% is 0.4--0.5 points), and the metric cannot measure coherence. As expected for a base model, it \emph{continues} text instead of answering: after ``The capital of France is'' it writes a made-up word and a story (``cluddy. Mia was sad\ldots''), because its only training objective is next-character prediction on stories.
 
 \section{Bonus: Rotary Position Embeddings}
 Rotary embeddings (RoPE) \cite{su2021} remove the learned position table. Each head's query and key are rotated by position-dependent angles before the scores are computed, so $\langle R_iq,R_jk\rangle$ depends only on $i-j$; the value vector is left unchanged. The RoPE model has 805,632 parameters (16,384 fewer, exactly the removed table). Four tests pass: position 0 is not rotated, rotations preserve vector length, scores are unchanged when both positions shift by the same amount, and attention remains causal.
 
-At the default setting (35\% of the budget, same configuration, learning rate, seed and data), RoPE reaches a fixed-slice loss of 0.8437 against 0.8570 for learned positions (paired difference $0.0134\pm0.0005$ over 7,812 windows, RoPE better on 61.9\%). Its validation loss is lower at every logged step, most strongly early (1.41 against 1.88 at step 250; Fig.~\ref{fig:rope}).
+At the default setting (35\% of the budget, same configuration, learning rate, seed and data), RoPE reaches a fixed-slice loss of 0.8442 against 0.8585 for learned positions (paired difference $0.0143\pm0.0005$ over 7,812 windows, RoPE better on 61.9\%). Its validation loss is lower at every logged step, most strongly early (1.41 against 1.85 at step 250; Fig.~\ref{fig:rope}).
 
 \begin{figure*}[t]\centering\includegraphics[width=0.9\textwidth]{figures/cell125.png}\caption{RoPE against learned positions at the default setting. Left: learning curves; right: loss by position.}\label{fig:rope}\end{figure*}
 
-A seed replication (Table~\ref{tab:rope}, Fig.~\ref{fig:ropeseeds}) gives $0.8473\pm0.0036$ for RoPE against $0.8561\pm0.0015$ for learned positions; the mean gap of 0.0087 is 3.8 standard errors of the seed spread, and every RoPE seed is below every learned-position seed (probability 1/20 if the runs were exchangeable). A Welch $t$-test gives $p\approx0.04$, so the evidence is moderate, not conclusive. Limits: all RoPE results are at 35\% of the budget; there are three seeds per model; and the RoPE model is not the Part~7 model, since the final model must come from \texttt{train()}, which builds the original \texttt{GPT}.
+A seed replication (Table~\ref{tab:rope}, Fig.~\ref{fig:ropeseeds}) gives $0.8476\pm0.0032$ for RoPE against $0.8555\pm0.0026$ for learned positions; the mean gap of 0.0079 is 3.3 standard errors of the seed spread, and every RoPE seed is below every learned-position seed (probability 1/20 if the runs were exchangeable). A Welch $t$-test gives $p=0.031$, so the evidence is moderate, not conclusive. The advantage does \emph{not} carry over to the full budget. With the Part~7 winner setting (context 256, batch 8, the same 14,715 steps, three seeds), RoPE scores $0.7212\pm0.0050$ against $0.7060\pm0.0038$ for learned positions (Welch $p=0.016$; every learned-position seed, 0.7016--0.7088, is below every RoPE seed, 0.7160--0.7260). The 35\% result is therefore best read as ``RoPE learns faster early''. Limits: the learning rate was not re-tuned for RoPE and we did not investigate the reason; there are three seeds per model; and the RoPE model is not the Part~7 model, since the final model must come from \texttt{train()}, which builds the original \texttt{GPT}.
 
 \begin{table}[t]\centering\caption{RoPE against learned positions (35\% budget)}\label{tab:rope}
 \footnotesize\begin{tabular}{lccccc}\toprule
 Model & 1337 & 1 & 2 & Mean & Std\\\midrule
-Learned & 0.8570 & 0.8567 & 0.8544 & 0.8561 & 0.0015\\
-RoPE & 0.8437 & 0.8473 & 0.8510 & 0.8473 & 0.0036\\\bottomrule\end{tabular}\end{table}
+Learned & 0.8585 & 0.8544 & 0.8536 & 0.8555 & 0.0026\\
+RoPE & 0.8442 & 0.8480 & 0.8506 & 0.8476 & 0.0032\\\bottomrule\end{tabular}\end{table}
 
 \begin{figure}[t]\centering\includegraphics[width=0.8\columnwidth]{figures/cell135.png}\caption{One dot per seed; black bars are means.}\label{fig:ropeseeds}\end{figure}
 
 \section{Discussion and Limitations}
-Compute mattered most: using the full budget instead of 35\% lowers the baseline from 0.8570 to 0.7513. At a fixed budget the best use was a longer context with a smaller batch, which buys more optimizer updates. Short-run (12\%) rankings failed to predict this, so comparisons were made at the full budget. No overfitting occurs: the final run processes 30.1\,M characters, 0.75 of one pass over the 40\,M training characters, and training and validation loss are equal at the last step (0.688 and 0.687). Limitations: one hardware type (T4, GPU runs are not bit-for-bit reproducible, so a re-run changes the last digits); selection on a single slice; the position-averaging artefact described above; model width and depth at long context and RoPE at the full budget were not tested.
+Compute mattered most: using the full budget instead of 35\% lowers the baseline from 0.8585 to 0.7478. At a fixed budget the best setting under the Part~8 metric was a longer context with a smaller batch, but the whole advantage is explained by the window-length effect, not by a better model, and a smaller batch is not generally better (it is worse at context 128). Model size around the winner is close to optimal and dropout hurts. Short-run (12\%) rankings failed to predict this, so comparisons were made at the full budget. No overfitting occurs: the final run processes 30.1\,M characters, 0.75 of one pass over the 40\,M training characters, and training and validation loss are equal at the last step (0.688 and 0.687). Limitations: one hardware type (T4, GPU runs are not bit-for-bit reproducible, so a re-run changes the last digits); selection on a single slice; the window-length effect described above; run-to-run variation of the baseline of about $\pm0.004$; one seed for each follow-up run and no learning-rate re-tuning for other sizes or for RoPE; no evaluation with overlapping windows.
 
 \section{Conclusion}
-A from-scratch character-level GPT with 0.82\,M parameters reaches 0.857 nats/char with the default setting and \textbf{0.7016} nats/char (perplexity 2.02, 1.01 bits/char, 7.9$\times$ compression) under a $2\times10^{14}$-FLOP budget, with context 256 and batch 8. The gain over the baseline is 12 times larger than the seed noise. Rotary embeddings give a further moderate improvement at 35\% of the budget.
+A from-scratch character-level GPT with 0.82\,M parameters reaches 0.8585 nats/char with the default setting and \textbf{0.7016} nats/char (perplexity 2.02, 1.01 bits/char, 7.9$\times$ compression) under a $2\times10^{14}$-FLOP budget, with context 256 and batch 8. The gain over the baseline is 12 times larger than the seed noise, but all of it is the effect of scoring longer windows, not a better model. Rotary embeddings help at 35\% of the budget (0.8476 against 0.8555) but not at the full budget (0.7212 against 0.7060).
 
 \section*{Acknowledgment}
-This report accompanies the notebook \texttt{nanogpt\_pretraining\_final\_Manidip\_Debnath\_v4.ipynb}; all numbers are taken from its executed outputs (one run on a Google Colab Tesla T4).
+This report accompanies the notebook \texttt{nanogpt\_pretraining\_final\_Manidip\_Debnath\_v5.ipynb}; all numbers are taken from its executed outputs (Google Colab Tesla T4; Appendix~B was run in a second session).
 
 \begin{thebibliography}{9}\footnotesize
 \bibitem{vaswani2017}A.~Vaswani \emph{et al.}, ``Attention is all you need,'' in \emph{Proc.\ NeurIPS}, 2017.
